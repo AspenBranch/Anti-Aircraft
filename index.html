@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html>
+<!-- Program exported to HTML using the KA Project Exporter by @MushyAvocado 
+https://www.khanacademy.org/computer-programming/ka-project-exporter/5195486791385088
+-->
+	
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+	<title>Anti-Aircraft</title>
+	<style>
+		
+		
+		/* Change the color as you want */
+		:root {
+			--background-color: #000000;
+		}
+		
+		
+		html, body, #wrapper {
+			overflow: hidden;
+			width: 100%;
+		    height: 100%;
+			margin: 0px;
+			padding: 0px;
+		    width: calc(100% + 1px);
+		}
+		
+		body {
+		    background-color: var(--background-color);
+		}
+		
+		
+		canvas {
+			width: fit-content;
+			height: fit-content;
+		}
+		
+		canvas:focus {
+			outline: none;
+		}
+		
+		/* Automatically fits to the remaining height and centers the canvas it contains */
+		#wrapper {
+			padding: 0px;
+			margin: 0px;
+			display: flex;
+			justify-content: center;
+			align-items: center;
+			width: 100%;
+		}
+		
+</style>
+</head>
+<body id="wrapper">
+    <!-- Canvases with a class of "sketch" are applied to the program in the order importPJS() is called. -->
+    <canvas class="sketch"></canvas>
+	<!-- Load the PJS library -->
+	<script type="text/javascript" src="https://cdn.jsdelivr.net/gh/Khan/processing-js@master/processing.js"></script>
+	<!-- The exporter script must be loaded before the program script -->
+	<script type="text/javascript" src="https://cdn.jsdelivr.net/gh/Mushy-Avocado/KA-exporter@main/exporter.js"></script>
+	<!-- Run Khan Academy program and import PJS -->
+	<script type="application/javascript">
+		
+		
+		function program() {
+		    
+		    title("Anti-Aircraft");
+		    size(600, 600);
+		    
+		    // All code goes here
+			/**
+			 * 
+			 * Rect-circle Collision: https://www.khanacademy.org/computer-programming/i/6272367368421376
+			 * 
+			 * This helped me find the plane rotation solution: https://www.khanacademy.org/computer-programming/i/4573688220631040
+			 * 
+			 * Math for trail coordinates: https://www.emathhelp.net/en/calculators/algebra-2/rotation-calculator/?px=-36&py=0&a=100&u=d&d=ccw&qx=0&qy=0
+			 * 
+			 * Cloud background: https://www.khanacademy.org/computer-programming/i/5722242558787584
+			 * 
+			 * Particle system: https://www.khanacademy.org/computer-programming/i/6520912297902080 lag-free particle system
+			 * 
+			**/
+			var totalHits = 0;
+			var totalPlanes = 0;
+			var totalShots = 0;
+			var score = 0;
+			
+			// Collision checkers {
+			var rectToCircle = function(rectX, rectY, rectW, rectH, rectAng, circleX, circleY, circleRad) {
+			    // Distance from the center of the circle to the center of the rectangle
+			    var distToRect = dist(circleX, circleY, rectX, rectY);
+			    
+			    // Angle from the center of the rectangle to the center of the circle
+			    var ang = atan2(circleY - rectY, circleX - rectX);
+			    
+			    // Make a new position for the circle, rotated backwards the amount of degrees that the rectangle is rotated
+			    circleX = rectX + cos(ang - rectAng) * distToRect;
+			    circleY = rectY + sin(ang - rectAng) * distToRect;
+			    
+			    // Find if the new point is over the rectangle as if the rectangle was not rotated
+			    
+			    // Position of the closest point to the circle on the rectangle
+			    var closeX = constrain(circleX, rectX - rectW / 2, rectX + rectW / 2);
+			    var closeY = constrain(circleY, rectY - rectH / 2, rectY + rectH / 2);
+			    
+			    // Return the distance from the circle to the closest point on the rectangle
+			    return dist(closeX, closeY, circleX, circleY) < circleRad;
+			};
+			function checkCollision(plane) {
+			    var pa = plane.returnBounds();
+			    var m = {x: mouseX, y: mouseY, r: 3};
+			    var bool = false;
+			    for(var i = 0; i < pa.length; i++) {
+			        var p = pa[i];
+			        if(rectToCircle(p.x, p.y, p.w, p.h, p.theta, m.x, m.y, m.r)) {
+			            bool = true;
+			            break;
+			        }
+			    }
+			    return bool;
+			}
+			function checkCollisionWithBullet(plane, bullet) {
+			    var pa = plane.returnBounds();
+			    var m = {x: bullet.x, y: bullet.y, r: bullet.r};
+			    var bool = false;
+			    for(var i = 0; i < pa.length; i++) {
+			        var p = pa[i];
+			        if(rectToCircle(p.x, p.y, p.w, p.h, p.theta, m.x, m.y, m.r + 0.5)) {
+			            bool = true;
+			            break;
+			        }
+			    }
+			    return bool;
+			}
+			//}
+			// Plane and bullet objects {
+			function plane(bezierInfo) {
+			    this.x = 0;
+			    this.y = 0;
+			    this.lastX = 0;
+			    this.lastY = 0;
+			    this.deltaX = 0;
+			    this.deltaY = 0;
+			    this.width = 40;
+			    this.height = 80;
+			    this.theta = 0;
+			    this.time = 0;
+			    this.totalTime = 250;
+			    this.c = color(173, 173, 173);
+			    this.bezierInfo = bezierInfo;
+			    this.displayPlane = function() {
+			        rectMode(CENTER);
+			        
+			        
+			        pushMatrix();
+			        translate(this.x, this.y);
+			        rotate(this.theta);
+			        
+			        noStroke();
+			        fill(this.c);
+			        
+			        rect(0, -5, 15, 70, 10);
+			        
+			        triangle(0, 15, -20, 40, 20, 40);
+			        
+			        rect(0, -5, 75, 15, 10);
+			        
+			        
+			        popMatrix();
+			    };
+			    this.giveTrailDotPos = function() {
+			        return [
+			            {x: this.x + ((-12.5*cos(this.theta))-(36*sin(this.theta))), y: this.y + (-12.5*sin(this.theta))+(36*cos(this.theta))},
+			            {x: this.x + ((12.5*cos(this.theta))-(36*sin(this.theta))), y: this.y + (12.5*sin(this.theta))+(36*cos(this.theta))},
+			        ];
+			    };
+			    this.animatePlane = function() {
+			        var t = this.time / this.totalTime;
+			        var x = bezierPoint(this.bezierInfo[0], this.bezierInfo[2], this.bezierInfo[4], this.bezierInfo[6], t);
+			        var y = bezierPoint(this.bezierInfo[1], this.bezierInfo[3], this.bezierInfo[5], this.bezierInfo[7], t);
+			        var tx = bezierTangent(this.bezierInfo[0], this.bezierInfo[2], this.bezierInfo[4], this.bezierInfo[6], t);
+			        var ty = bezierPoint(this.bezierInfo[1], this.bezierInfo[3], this.bezierInfo[5], this.bezierInfo[7], t);
+			        var a = atan2(tx, ty);
+			        
+			        this.x = x;
+			        this.y = y;
+			        this.deltaX = this.x - this.lastX;
+			        this.deltaY = this.y - this.lastY;
+			        this.lastX = this.x;
+			        this.lastY = this.y;
+			        
+			        this.theta = atan2(this.deltaY, this.deltaX) + 90;
+			        var num1 = -50;
+			        var num2 = 650;
+			        var r1 = floor(random(0, 2));
+			        var r2 = floor(random(0, 2));
+			        var start, end;
+			        if(r1 === 0) {
+			            start = num1;
+			        } else {
+			            start = num2;
+			        }
+			        if(r2 === 0) {
+			            end = num1;
+			        } else {
+			            end = num2;
+			        }
+			        if(this.time === this.totalTime) {
+			            this.time = floor(random(-100, -25));
+			            this.bezierInfo = [start, random(-50, 650), random(0, 600), random(0, 600), random(0, 600), random(0, 600), end, random(0, 650)];
+			            this.totalTime = floor(random(100, 300));
+			            totalPlanes++;
+			        }
+			        this.time++;
+			    };
+			    this.setColor = function(c) {
+			        this.c = c;
+			    };
+			    this.returnBounds = function() {
+			        return [
+			            {
+			                x: this.x,
+			                y: this.y,
+			                w: this.width - 20,
+			                h: this.height,
+			                theta: this.theta
+			            },
+			            {
+			                x: this.x,
+			                y: this.y - 5,
+			                w: this.width + 35,
+			                h: this.height - 60,
+			                theta: this.theta
+			            },
+			            {
+			                x: this.x,
+			                y: this.y + 35,
+			                w: this.width - 5,
+			                h: this.height - 70,
+			                theta: this.theta
+			            }
+			        ];
+			    };
+			    this.resetPlane = function() {
+			        var num1 = -50;
+			        var num2 = 650;
+			        var r1 = floor(random(0, 2));
+			        var r2 = floor(random(0, 2));
+			        var start, end;
+			        if(r1 === 0) {
+			            start = num1;
+			        } else {
+			            start = num2;
+			        }
+			        if(r2 === 0) {
+			            end = num1;
+			        } else {
+			            end = num2;
+			        }
+			            this.time = floor(random(-100, -25));
+			            this.bezierInfo = [start, random(-50, 650), random(0, 600), random(0, 600), random(0, 600), random(0, 600), end, random(0, 650)];
+			            this.totalTime = floor(random(100, 300));
+			            totalPlanes++;
+			    };
+			}
+			function bullet(endX, endY) {
+			    this.x = 300;
+			    this.y = 300;
+			    this.endX = endX;
+			    this.endY = endY;
+			    this.time = 0;
+			    this.totalTime = 20;
+			    this.r = 0;
+			    this.done = false;
+			    this.displayBullet = function() {
+			        pushMatrix();
+			        translate(this.x, this.y);
+			        
+			        fill(255, 0, 0);
+			        ellipse(0, 0, this.r * 2, this.r * 2);
+			        
+			        popMatrix();
+			    };
+			    this.animateBullet = function() {
+			        var tRb = bezierPoint(0, 600, 600, 600, this.time/this.totalTime);
+			        var tR = tRb / 600;
+			        var x = lerp(300, this.endX, tR);
+			        var y = lerp(300, this.endY, tR);
+			        var r = lerp(600, 1, tR);
+			        
+			        this.x = x;
+			        this.y = y;
+			        this.r = r;
+			        this.time++;
+			        if(this.time === this.totalTime) {
+			            this.time--;
+			            this.done = true;
+			        }
+			    };
+			    this.doneFlying = function() {
+			        return this.done;
+			    };
+			}
+			//}
+			// Clouds {
+			var drawCloud = function(dt, tZero, amplitude, rangeHeight, detail) {
+			    noStroke();
+			    var timer=millis();
+			    for (var x = 0; x < width; x += detail) {  
+			        for(var y=0;y< rangeHeight;y+=detail) {
+			            var n = noise(dt*x+tZero,dt*y,tZero);
+			            var f = map(n, 0, 1, 0, amplitude);
+			            fill(255, 255, 255, 255-f);
+			            rect(x + 6, y + 6, detail, detail); 
+			        }
+			        if(millis() - timer > 50) { return(1); }
+			    }
+			    return(0);
+			};
+			var tZero = 0;
+			var detaillevel = 15;
+			//}
+			// Particles {
+			Object.constructor.prototype.create = function () {
+			    var obj = Object.create(this.prototype);
+			    this.apply(obj, arguments);
+			    return obj;
+			};
+			/** A basic particle datatype. **/
+			// x, position on x axis.
+			// y, position on y axis.
+			// xv, velocity on x axis, negative is left, positive is right.
+			// yv, velocity on y axis, negative is up, positive is down
+			// data, to be passed into the display function. (eg. a color for a generic square particle)
+			// f, the function used to display the particle
+			// lifetime, how many frames the particle will exist before being destroyed.
+			var Particle=function(x,y,xv,yv,data,f,lifetime){
+			    // Set the object to contin all needed data.
+			    this.x=x;
+			    this.y=y;
+			    this.xv=xv;
+			    this.yv=yv;
+			    this.data=data;
+			    this.f=f;
+			    this.l=lifetime;
+			};
+			
+			// Display the particle based on the function it was generated with.
+			Particle.prototype.display=function(){
+			    this.f(this.data,this.x,this.y,this.xv,this.yv,this.l);
+			};
+			
+			// Move the particle based on it's velocity values.
+			Particle.prototype.simulate=function(){
+			    this.x+=this.xv;
+			    this.y+=this.yv;
+			};
+			
+			// Add to velocity by an ammount each frame to emulate gravity-- also works on x axis!
+			Particle.prototype.gravity=function(x,y){
+			    this.xv+=x;
+			    this.yv+=y;
+			};
+			
+			// Variable for tracting ammount of deleted particles.
+			var deletedCount=0;
+			/** A generic function to run an array of particles through it's vital processes. **/
+			
+			// dataArray, an array of particles to run
+			// xgravity, gravity on x axis, negative is left, positive is right.
+			// ygravity, gravity on y axis, negative is up, positive is down
+			var executeParticle=function(dataArray,xgravity,ygravity){
+			    this.DelCount=0;
+			    for(var i=0; i<dataArray.length; i++){
+			        dataArray[i].simulate();
+			        //dataArray[i].gravity(xgravity,ygravity);
+			        dataArray[i].display();
+			        if(dataArray[i].l<=0){
+			            dataArray.splice(i,1);
+			            this.DelCount++;
+			        }else{
+			            dataArray[i].l--;
+			        }
+			    }
+			    return this.DelCount;
+			};
+			
+			// A generic function for a line particle that points in the direction it is moving and with length guided by the speed of the particle.
+			var genericVectorParticle=function(filler, x, y, xv, yv){
+			    stroke(255, 56, 56, 150);
+			    strokeWeight(10);
+			    line(x,y,x-xv,y-yv);
+			};
+			
+			
+			//}
+			// My array of particles {
+			var particleArray = [];
+			function moreParticles(x, y) {
+			    for(var i = 0; i < floor(random(30, 70)); i++) {
+			    particleArray.push(Particle.create(x, y,random(-3,3),random(-3,3),false,genericVectorParticle,30));
+			    }
+			}
+			//}
+			// Plane trail dots {
+			var planeTrailDot = function(x, y) {
+			    this.x = x;
+			    this.y = y;
+			    this.time = 0;
+			    this.totalTime = 50;
+			    this.a = 255;
+			    this.done = false;
+			    this.displayDot = function() {
+			        noStroke();
+			        fill(255, 255, 255, this.a);
+			        ellipse(this.x, this.y, 10, 10);
+			    };
+			    this.animateDot = function() {
+			        var a = lerp(200, 0, this.time/this.totalTime);
+			        this.a = a;
+			        this.time++;
+			        if(this.time === this.totalTime) {
+			            this.done = true;
+			            this.time--;
+			        }
+			    };
+			    
+			};
+			var planeTrail = [];
+			//}
+			
+			
+			var arr = [-25, 300, 150, 450, 450, 150, 625, 0];
+			var p = new plane(arr);
+			var b = new bullet(20, 20);
+			var bs = [];
+			
+			var shotTimer = 0;
+			
+			var shakeTimer = 0;
+			var shake = [0, 0];
+			
+			var drawTitle = false;
+			
+			
+			
+			
+			draw = function() {
+			    background(87, 228, 250);
+			    
+			    pushMatrix();
+			    translate(shake[0], shake[1]);
+			    
+			    drawCloud(0.003, tZero, 500, 600, detaillevel);
+			    tZero+=0.001;
+			    
+			    
+			    for(var i = bs.length - 1; i >= 0; i--) {
+			        if(bs[i].doneFlying()) {
+			            if(checkCollisionWithBullet(p, bs[i])) {
+			                moreParticles(p.x, p.y);
+			                p.resetPlane();
+			                totalHits++;
+			                
+			            }
+			            bs.splice(i, 1);
+			        }
+			    }
+			    
+			    fill(112, 248, 255);
+			    textSize(100);
+			    textFont(createFont("Chalkboard Bold"));
+			    textAlign(CENTER, CENTER);
+			    text(score, 300, 100);
+			    fill(255, 255, 255, 150);
+			    text(score, 302, 101);
+			    score = totalHits + "/" + totalPlanes;
+			    //hits/shots
+			    if(shakeTimer !== 0) {
+			        shake = [random(-shakeTimer, shakeTimer), random(-shakeTimer, shakeTimer)];
+			        shakeTimer--;
+			    }
+			    
+			    executeParticle(particleArray,0,0.2);
+			    strokeWeight(1);
+			    noFill();
+			    stroke(255, 0, 0);
+			    //bezier(arr[0], arr[1], arr[2], arr[3], arr[4], arr[5], arr[6], arr[7]);
+			    
+			    var pTrail = p.giveTrailDotPos();
+			    for(var i = 0; i < pTrail.length; i++) {
+			        planeTrail.push(new planeTrailDot(pTrail[i].x, pTrail[i].y));
+			    }
+			    for(var i = planeTrail.length - 1; i >= 0; i--) {
+			        
+			        
+			        planeTrail[i].displayDot();
+			        planeTrail[i].animateDot();
+			        
+			        if(planeTrail[i].done === true) {
+			            planeTrail.splice(i, 1);
+			        }
+			    }
+			    
+			    p.animatePlane();
+			    p.displayPlane();
+			    
+			    for(var i = 0; i < bs.length; i++) {
+			        bs[i].displayBullet();
+			        bs[i].animateBullet();
+			    }
+			    popMatrix();
+			    if(shotTimer !== 0) {
+			        shotTimer--;
+			    }
+			    frameRate(60);
+			    
+			    
+			    if(drawTitle) {
+			        textAlign(CENTER, CENTER);
+			        textSize(75);
+			        fill(0, 0, 0);
+			        textFont(createFont("Georgia Bold"));
+			        
+			        pushMatrix();
+			        translate(300, 300);
+			        rotate(-20);
+			        
+			        fill(112, 112, 112);
+			        text("ANTIAIRCRAFT", 0, 0);
+			        popMatrix();
+			    }
+			    
+			};
+			mouseClicked = function() {
+			    if(shotTimer === 0) {
+			        bs.push(new bullet(mouseX, mouseY));
+			        shakeTimer = 15;
+			        totalShots++;
+			        shotTimer = 15;
+			    }
+			};
+			keyPressed = function() {
+			    if(keyCode === 192) {
+			        drawTitle = true;
+			    } else if(keyCode === 220) {
+			        noLoop();
+			    }
+			};
+			
+			
+			
+			
+		}
+		
+		runPJS(program);
+		
+		// Add reload button on KA --> <script>
+		
+	</script>
+</body>
+
+</html>
